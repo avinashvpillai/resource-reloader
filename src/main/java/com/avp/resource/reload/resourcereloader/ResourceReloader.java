@@ -28,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ResourceReloader implements ResourceLoaderAware{
 	
+	private ConcurrentMap<String, String> CACHE = new ConcurrentHashMap<>();
+	
 	@Autowired
 	private ResourceLoader resourceLoader;
 
@@ -37,7 +39,7 @@ public class ResourceReloader implements ResourceLoaderAware{
 	@Autowired
 	private ConfigurableEnvironment cenv;
 	
-	@Scheduled(fixedDelay = 10000)
+	//@Scheduled(fixedDelay = 10000)
 	public void reloadConfiguration() throws IOException {
 		ConcurrentMap<String, String> localMap = new ConcurrentHashMap<>();
 		String fileName;
@@ -46,10 +48,9 @@ public class ResourceReloader implements ResourceLoaderAware{
 		String envResourceLoc = env.getProperty("spring.config.location");
         log.info("envResourceLoc {}", envResourceLoc);
         log.info("spring.application.name: {} app.version {}",env.getProperty("spring.application.name"), env.getProperty("app.version"));
-        if(!StringUtils.isEmpty(envResourceLoc)) {
-        	resourceLoader.getResource(env.getProperty("spring.config.location"));        
-            Resource banner = resourceLoader.getResource("file:../src/main/environments/qa/");        
-            InputStream in = banner.getInputStream(); 
+        if(!StringUtils.isEmpty(envResourceLoc)) {        	        
+            Resource resources = resourceLoader.getResource(env.getProperty("spring.config.location"));      
+            InputStream in = resources.getInputStream(); 
             BufferedReader reader = new BufferedReader(new InputStreamReader(in)); 
             while (true) {
                 String line = reader.readLine();
@@ -67,7 +68,8 @@ public class ResourceReloader implements ResourceLoaderAware{
                     		log.info("resource loading from path {}",fileName);
                     		//properties = PropertiesLoaderUtils.loadAllProperties("application.properties");
                     		//ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(ResourceReloader.class).properties("spring.config.location:"+fileName).build().run();
-                    		properties = readPropertiesFromFileSystem(fileName);                            
+                    		properties = readPropertiesFromFileSystem(fileName); 
+                    		properties.forEach((key, value) -> localMap.put(key.toString(), value.toString()));
                     	}
                     	                	
                         
@@ -77,10 +79,11 @@ public class ResourceReloader implements ResourceLoaderAware{
             }
             reader.close();
         }else {
-        	log.info("resource loading from local");
-        	fileName = "application.properties";
-            properties = readProperties(fileName);
+        	//log.info("resource loading from local");
+        	//fileName = "application.properties";
+           // properties = readProperties(fileName);
         }
+        updateCache(localMap);
         log.info("new val of version: {}",properties.getProperty("app.version"));
         log.info("spring.application.name aftr loading: {} app.version {}",env.getProperty("spring.application.name"), env.getProperty("app.version"));
 	}
@@ -131,5 +134,20 @@ public class ResourceReloader implements ResourceLoaderAware{
 	@Override
 	public void setResourceLoader(ResourceLoader resourceLoader) {
         this.resourceLoader = resourceLoader;
+    }
+	
+	public String getValueString(String key, String defaultValue) {
+        if (CACHE.containsKey(key)) {
+            return CACHE.get(key);
+        }
+        return defaultValue;
+    }
+
+    public String getValueString(String key) {
+        return CACHE.get(key);
+    }
+    
+    private synchronized void updateCache(ConcurrentMap<String, String> tempMap) {
+        this.CACHE = tempMap;
     }
 }
